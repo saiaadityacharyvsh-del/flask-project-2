@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}View Note | Notes App{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="hero">
+        <h1>{{ note.title }}</h1>
+        {% if note.created_at %}
+            <p>Created on {{ note.created_at }}</p>
+        {% else %}
+            <p>Review the full content of your saved note below.</p>
+        {% endif %}
+    </div>
+
+    <div class="content-box">{{ note.content }}</div>
+
+    <div class="actions" style="margin-top: 24px;">
+        <a class="button" href="{{ url_for('viewall') }}">Back to Notes</a>
+        <a class="button button-primary" href="{{ url_for('updatenote', id=note.id) }}">Edit Note</a>
+    </div>
+</section>
+{% endblock %}

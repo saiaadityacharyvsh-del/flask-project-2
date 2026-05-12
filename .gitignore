@@ -1,0 +1,6 @@
+venv/
+*.db
+*.db-journal
+__pycache__/
+*.pyc
+test_write.tmp

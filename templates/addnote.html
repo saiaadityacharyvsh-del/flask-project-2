@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Add Note | Notes App{% endblock %}
+
+{% block content %}
+<section class="form-layout">
+    <div class="card">
+        <div class="hero">
+            <h1>Add a new note</h1>
+            <p>Capture an idea, task, or reminder for later.</p>
+        </div>
+
+        <form method="post">
+            <label for="title">
+                Title
+                <input type="text" id="title" name="title" placeholder="Enter note title" required>
+            </label>
+
+            <label for="content">
+                Content
+                <textarea id="content" name="content" placeholder="Write your note here..." required></textarea>
+            </label>
+
+            <div class="actions">
+                <button class="button button-primary" type="submit">Save Note</button>
+                <a class="button" href="{{ url_for('viewall') }}">Cancel</a>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

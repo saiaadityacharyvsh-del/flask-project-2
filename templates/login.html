@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Login | Notes App{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+    <div class="card">
+        <div class="hero">
+            <h1>Welcome back</h1>
+            <p>Log in to view, add, update, and manage your notes.</p>
+        </div>
+
+        <form method="post">
+            <label for="username">
+                Username
+                <input type="text" id="username" name="username" placeholder="Enter your username" required>
+            </label>
+
+            <label for="password">
+                Password
+                <input type="password" id="password" name="password" placeholder="Enter your password" required>
+            </label>
+
+            <p>
+                <a class="muted-link" href="{{ url_for('forgot_password') }}">Forgot password?</a>
+            </p>
+
+            <div class="actions">
+                <button class="button button-primary" type="submit">Login</button>
+            </div>
+        </form>
+
+        <p style="margin-top: 18px;">
+            New here?
+            <a class="muted-link" href="{{ url_for('register') }}">Create an account</a>
+        </p>
+    </div>
+</section>
+{% endblock %}

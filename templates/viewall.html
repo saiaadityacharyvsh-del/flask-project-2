@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}All Notes | Notes App{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="hero">
+        <h1>Your notes</h1>
+        <p>Everything you have saved appears here, with quick actions for searching, viewing, editing, and deleting.</p>
+    </div>
+
+    <div class="toolbar">
+        <form class="search-form" method="get" action="{{ url_for('search') }}">
+            <input
+                type="text"
+                name="q"
+                value="{{ query or '' }}"
+                placeholder="Search notes by title"
+            >
+            <button class="button" type="submit">Search</button>
+            {% if query %}
+                <a class="button" href="{{ url_for('viewall') }}">Clear</a>
+            {% endif %}
+        </form>
+
+        <a class="button button-primary" href="{{ url_for('addnote') }}">Add New Note</a>
+    </div>
+
+    <div class="search-summary">
+        {% if query %}
+            Showing {{ notes|length }} result{% if notes|length != 1 %}s{% endif %} for "{{ query }}"
+        {% else %}
+            You have {{ notes|length }} saved note{% if notes|length != 1 %}s{% endif %}.
+        {% endif %}
+    </div>
+
+    {% if notes %}
+        <div class="notes-grid">
+            {% for note in notes %}
+                <article class="note-card">
+                    <h3>{{ note.title }}</h3>
+                    {% if note.created_at %}
+                        <div class="note-meta">Created: {{ note.created_at }}</div>
+                    {% endif %}
+                    <p class="note-preview">
+                        {{ note.content[:140] }}{% if note.content|length > 140 %}...{% endif %}
+                    </p>
+                    <div class="note-footer">
+                        <span class="note-badge">{{ note.content|length }} characters</span>
+                        <div class="actions">
+                            <a class="button" href="{{ url_for('viewnote', id=note.id) }}">View</a>
+                            <a class="button" href="{{ url_for('updatenote', id=note.id) }}">Edit</a>
+                            <a class="button" href="{{ url_for('deletenote', id=note.id) }}" onclick="return confirm('Delete this note?');">Delete</a>
+                        </div>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            {% if query %}
+                <h2>No matching notes</h2>
+                <p style="margin-top: 10px;">Try a different title keyword or clear the search to see all notes.</p>
+            {% else %}
+                <h2>No notes yet</h2>
+                <p style="margin-top: 10px;">Create your first note and it will show up here.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

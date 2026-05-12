@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Update Note | Notes App{% endblock %}
+
+{% block content %}
+<section class="form-layout">
+    <div class="card">
+        <div class="hero">
+            <h1>Edit note</h1>
+            <p>Update the title or content, then save your changes.</p>
+        </div>
+
+        <form method="post">
+            <label for="title">
+                Title
+                <input type="text" id="title" name="title" value="{{ note.title }}" required>
+            </label>
+
+            <label for="content">
+                Content
+                <textarea id="content" name="content" required>{{ note.content }}</textarea>
+            </label>
+
+            <div class="actions">
+                <button class="button button-primary" type="submit">Update Note</button>
+                <a class="button" href="{{ url_for('viewnote', id=note.id) }}">Cancel</a>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

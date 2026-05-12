@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Register | Notes App{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+    <div class="card">
+        <div class="hero">
+            <h1>Create your account</h1>
+            <p>Register to start saving personal notes in one place.</p>
+        </div>
+
+        <form method="post">
+            <label for="username">
+                Username
+                <input type="text" id="username" name="username" placeholder="Enter your username" required>
+            </label>
+
+            <label for="email">
+                Email
+                <input type="email" id="email" name="email" placeholder="Enter your email" required>
+            </label>
+
+            <label for="password">
+                Password
+                <input type="password" id="password" name="password" placeholder="Create a password" required>
+            </label>
+
+            <div class="actions">
+                <button class="button button-primary" type="submit">Register</button>
+            </div>
+        </form>
+
+        <p style="margin-top: 18px;">
+            Already have an account?
+            <a class="muted-link" href="{{ url_for('login') }}">Login here</a>
+        </p>
+    </div>
+</section>
+{% endblock %}
