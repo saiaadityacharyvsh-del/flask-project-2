@@ -1,63 +1,90 @@
-from flask import Flask, render_template, request, redirect, session, flash, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    session,
+    flash,
+    url_for,
+    jsonify
+)
+
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
+
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer
+
+from functools import wraps
+from pathlib import Path
+
 import sqlite3
 import re
 import os
-from functools import wraps
-from pathlib import Path
-from flask_mail import Mail, Message
-from itsdangerous import URLSafeTimedSerializer
 
 
 app = Flask(__name__)
 
+# =====================================
 # SECRET KEY
-app.secret_key = os.getenv("SECRET_KEY")
+# =====================================
 
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "super-secret-key"
+)
+
+# =====================================
 # DATABASE
-DATABASE_DIR = Path(os.getenv("LOCALAPPDATA", app.root_path)) / "flask-notes-app"
+# =====================================
+
+DATABASE_DIR = Path(app.instance_path)
 DATABASE_PATH = DATABASE_DIR / "notes.db"
 
-# MAIL CONFIGURATION
+# =====================================
+# MAIL CONFIG
+# =====================================
+
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "saiaaditya1343@gmail.com"
+app.config["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME")
 app.config["MAIL_PASSWORD"] = os.getenv("MAIL_PASSWORD")
-mail = Mail(app)
+app.config["MAIL_DEFAULT_SENDER"] = os.getenv("MAIL_DEFAULT_SENDER") or app.config["MAIL_USERNAME"]
+mail = Mail(app) if app.config["MAIL_USERNAME"] and app.config["MAIL_PASSWORD"] else None
 
+# =====================================
 # TOKEN SERIALIZER
-serializer = URLSafeTimedSerializer(app.secret_key)
+# =====================================
 
+serializer = URLSafeTimedSerializer(
+    app.secret_key
+)
+
+# =====================================
+# DATABASE CONNECTION
+# =====================================
 
 def get_connection():
-    DATABASE_DIR.mkdir(parents=True, exist_ok=True)
 
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
+    DATABASE_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    connection.execute("PRAGMA foreign_keys = ON")
+    conn = sqlite3.connect(
+        DATABASE_PATH
+    )
 
-    return connection
+    conn.row_factory = sqlite3.Row
 
+    conn.execute(
+        "PRAGMA foreign_keys = ON"
+    )
 
-def get_db():
-    return get_connection()
-
-
-def init_db():
-    with get_connection() as db:
-
-        with open(
-            Path(app.root_path) / "schema.sql",
-            "r",
-            encoding="utf-8"
-        ) as schema_file:
-
-            db.executescript(schema_file.read())
-
-
-init_db()
+    return conn
 
 
 def run_query(
@@ -67,31 +94,73 @@ def run_query(
     fetch_all=False,
     commit=False
 ):
-    db = get_db()
 
-    cursor = db.cursor()
+    with get_connection() as conn:
 
-    cursor.execute(query, params)
+        cursor = conn.cursor()
 
-    result = None
+        cursor.execute(query, params)
 
-    if fetch_one:
-        result = cursor.fetchone()
+        result = None
 
-    elif fetch_all:
-        result = cursor.fetchall()
+        if fetch_one:
+            result = cursor.fetchone()
 
-    if commit:
-        db.commit()
+        elif fetch_all:
+            result = cursor.fetchall()
 
-    cursor.close()
-    db.close()
+        if commit:
+            conn.commit()
 
-    return result
+        cursor.close()
 
+        return result
+
+
+# =====================================
+# INITIALIZE DATABASE
+# =====================================
+
+def init_db():
+    conn = None
+    try:
+        conn = get_connection()
+        with open(
+            Path(app.root_path) / "schema.sql",
+            encoding="utf-8"
+        ) as f:
+            conn.executescript(f.read())
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+init_db()
+
+# =====================================
+# HELPERS
+# =====================================
 
 def current_user_id():
     return session.get("user_id")
+
+
+def login_required(view):
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+
+        if not current_user_id():
+            flash(
+                "Please login first.",
+                "warning"
+            )
+
+            return redirect(url_for("login"))
+
+        return view(*args, **kwargs)
+
+    return wrapped
 
 
 def note_or_404(note_id):
@@ -103,28 +172,18 @@ def note_or_404(note_id):
         WHERE id = ?
         AND user_id = ?
         """,
-        (note_id, current_user_id()),
+        (
+            note_id,
+            current_user_id()
+        ),
         fetch_one=True
     )
-
-    if not note:
-        return None
-
     return note
 
 
-def login_required(view_function):
-
-    @wraps(view_function)
-    def wrapped_view(*args, **kwargs):
-
-        if not current_user_id():
-            return redirect(url_for("login"))
-
-        return view_function(*args, **kwargs)
-
-    return wrapped_view
-
+# =====================================
+# HOME
+# =====================================
 
 @app.route("/")
 def home():
@@ -135,6 +194,10 @@ def home():
     return redirect(url_for("login"))
 
 
+# =====================================
+# REGISTER
+# =====================================
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
 
@@ -143,6 +206,41 @@ def register():
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
         password = request.form["password"]
+
+        # Validation
+
+        if not re.match(
+            r"^[a-zA-Z0-9_]{3,20}$",
+            username
+        ):
+
+            flash(
+                "Invalid username.",
+                "danger"
+            )
+
+            return render_template("register.html")
+
+        if len(password) < 6:
+
+            flash(
+                "Password too short.",
+                "danger"
+            )
+
+            return render_template("register.html")
+
+        if not re.match(
+            r"[^@]+@[^@]+\.[^@]+",
+            email
+        ):
+
+            flash(
+                "Invalid email.",
+                "danger"
+            )
+
+            return render_template("register.html")
 
         hashed_pw = generate_password_hash(password)
 
@@ -154,12 +252,16 @@ def register():
                 (username, email, password)
                 VALUES (?, ?, ?)
                 """,
-                (username, email, hashed_pw),
+                (
+                    username,
+                    email,
+                    hashed_pw
+                ),
                 commit=True
             )
 
             flash(
-                "Registration successful! Please login.",
+                "Registration successful!",
                 "success"
             )
 
@@ -174,6 +276,10 @@ def register():
 
     return render_template("register.html")
 
+
+# =====================================
+# LOGIN
+# =====================================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -201,20 +307,30 @@ def login():
             session["user_id"] = user["id"]
             session["username"] = user["username"]
 
+            flash(
+                "Welcome back!",
+                "success"
+            )
+
             return redirect(url_for("viewall"))
 
         flash(
-            "Invalid username or password!",
+            "Invalid credentials.",
             "danger"
         )
 
     return render_template("login.html")
 
 
-# =========================
+# =====================================
 # FORGOT PASSWORD
-# =========================
-@app.route("/forgot-password", methods=["GET", "POST"])
+# =====================================
+
+@app.route(
+    "/forgot-password",
+    methods=["GET", "POST"]
+)
+
 def forgot_password():
 
     if request.method == "POST":
@@ -225,7 +341,7 @@ def forgot_password():
             """
             SELECT *
             FROM users
-            WHERE lower(email) = ?
+            WHERE email = ?
             """,
             (email,),
             fetch_one=True
@@ -235,7 +351,7 @@ def forgot_password():
 
             token = serializer.dumps(
                 email,
-                salt="password-reset-salt"
+                salt="password-reset"
             )
 
             reset_link = url_for(
@@ -244,83 +360,82 @@ def forgot_password():
                 _external=True
             )
 
-            msg = Message(
-                "Password Reset Request",
-                sender=app.config["MAIL_USERNAME"],
-                recipients=[email]
-            )
+            if mail:
+                msg = Message(
+                    "Password Reset",
+                    sender=app.config["MAIL_USERNAME"],
+                    recipients=[email]
+                )
 
-            msg.body = f"""
-Hello,
-
-Click the link below to reset your password:
-
+                msg.body = f"""
+Reset your password:
+ 
 {reset_link}
-
-If you did not request this,
-please ignore this email.
 """
-
-            mail.send(msg)
+                mail.send(msg)
+            else:
+                print(f"Reset link (mail disabled): {reset_link}")
 
         flash(
-            "If the email exists, a reset link has been sent.",
+            "If the email exists, a reset link was sent.",
             "info"
         )
 
         return redirect(url_for("login"))
 
-    return redirect(url_for("forgot_password"))
+    return render_template(
+        "forget_password.html"
+    )
 
 
-# =========================
+# =====================================
 # RESET PASSWORD
-# =========================
-@app.route("/reset-password/<token>", methods=["GET", "POST"])
+# =====================================
+
+@app.route(
+    "/reset-password/<token>",
+    methods=["GET", "POST"]
+)
+
 def reset_password(token):
 
     try:
 
         email = serializer.loads(
             token,
-            salt="password-reset-salt",
+            salt="password-reset",
             max_age=3600
         )
 
-    except:
+    except Exception:
 
         flash(
-            "Reset link is invalid or expired.",
+            "Invalid or expired link.",
             "danger"
         )
 
-        return redirect(url_for("forget_password"))
+        return redirect(
+            url_for("forgot_password")
+        )
 
     if request.method == "POST":
 
-        new_password = request.form["new_password"]
-        confirm_password = request.form["confirm_password"]
+        password = request.form["new_password"]
+        confirm = request.form["confirm_password"]
 
-        if new_password != confirm_password:
+        if password != confirm:
 
             flash(
                 "Passwords do not match.",
                 "warning"
             )
 
-            return render_template("reset_password.html")
-
-        if len(new_password) < 6:
-
-            flash(
-                "Password must be at least 6 characters.",
-                "warning"
+            return render_template(
+                "reset_password.html"
             )
 
-            return render_template("reset_password.html")
-
-        hashed_password = generate_password_hash(
-            new_password
+        hashed = generate_password_hash(
+            password
         )
 
         run_query(
@@ -329,19 +444,25 @@ def reset_password(token):
             SET password = ?
             WHERE lower(email) = ?
             """,
-            (hashed_password, email),
+            (hashed, email),
             commit=True
         )
 
         flash(
-            "Password updated successfully.",
+            "Password updated.",
             "success"
         )
 
         return redirect(url_for("login"))
 
-    return render_template("reset_password.html")
+    return render_template(
+        "reset_password.html"
+    )
 
+
+# =====================================
+# LOGOUT
+# =====================================
 
 @app.route("/logout")
 def logout():
@@ -356,7 +477,15 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/addnote", methods=["GET", "POST"])
+# =====================================
+# ADD NOTE
+# =====================================
+
+@app.route(
+    "/addnote",
+    methods=["GET", "POST"]
+)
+
 @login_required
 def addnote():
 
@@ -371,7 +500,11 @@ def addnote():
             (title, content, user_id)
             VALUES (?, ?, ?)
             """,
-            (title, content, current_user_id()),
+            (
+                title,
+                content,
+                current_user_id()
+            ),
             commit=True
         )
 
@@ -384,6 +517,66 @@ def addnote():
 
     return render_template("addnote.html")
 
+
+# =====================================
+# UPDATE NOTE
+# =====================================
+
+@app.route(
+    "/updatenote/<int:id>",
+    methods=["GET", "POST"]
+)
+
+@login_required
+def updatenote(id):
+
+    note = note_or_404(id)
+
+    if not note:
+
+        flash(
+            "Note not found.",
+            "danger"
+        )
+
+        return redirect(url_for("viewall"))
+
+    if request.method == "POST":
+
+        title = request.form["title"]
+        content = request.form["content"]
+
+        run_query(
+            """
+            UPDATE notes
+            SET title = ?, content = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (
+                title,
+                content,
+                id,
+                current_user_id()
+            ),
+            commit=True
+        )
+
+        flash(
+            "Note updated!",
+            "success"
+        )
+
+        return redirect(url_for("viewnote", id=id))
+
+    return render_template(
+        "updatenote.html",
+        note=note
+    )
+
+
+# =====================================
+# VIEW NOTES
+# =====================================
 
 @app.route("/viewall")
 @login_required
@@ -402,19 +595,26 @@ def viewall():
 
     return render_template(
         "viewall.html",
-        notes=notes,
-        query=""
+        notes=notes
     )
+# =====================================
+# VIEW SINGLE NOTE
+# =====================================
 
-
-@app.route("/viewnotes/<int:id>")
+@app.route("/viewnote/<int:id>")
 @login_required
 def viewnote(id):
 
     note = note_or_404(id)
 
     if not note:
-        return "Note not found", 404
+
+        flash(
+            "Note not found.",
+            "danger"
+        )
+
+        return redirect(url_for("viewall"))
 
     return render_template(
         "viewnote.html",
@@ -422,50 +622,15 @@ def viewnote(id):
     )
 
 
-@app.route("/updatenote/<int:id>", methods=["GET", "POST"])
-@login_required
-def updatenote(id):
+# =====================================
+# DELETE NOTE (GET ONLY)
+# =====================================
 
-    if request.method == "POST":
+@app.route(
+    "/deletenote/<int:id>",
+    methods=["GET"]
+)
 
-        title = request.form["title"]
-        content = request.form["content"]
-
-        run_query(
-            """
-            UPDATE notes
-            SET title = ?, content = ?
-            WHERE id = ?
-            AND user_id = ?
-            """,
-            (
-                title,
-                content,
-                id,
-                current_user_id()
-            ),
-            commit=True
-        )
-
-        flash(
-            "Note updated!",
-            "success"
-        )
-
-        return redirect(url_for("viewall"))
-
-    note = note_or_404(id)
-
-    if not note:
-        return "Note not found", 404
-
-    return render_template(
-        "updatenote.html",
-        note=note
-    )
-
-
-@app.route("/deletenote/<int:id>")
 @login_required
 def deletenote(id):
 
@@ -475,23 +640,30 @@ def deletenote(id):
         WHERE id = ?
         AND user_id = ?
         """,
-        (id, current_user_id()),
+        (
+            id,
+            current_user_id()
+        ),
         commit=True
     )
 
     flash(
-        "Note deleted.",
-        "warning"
+        "Note deleted!",
+        "success"
     )
 
     return redirect(url_for("viewall"))
 
 
-@app.route("/search", methods=["GET", "POST"])
+# =====================================
+# SEARCH
+# =====================================
+
+@app.route("/search")
 @login_required
 def search():
 
-    query = request.values.get(
+    query = request.args.get(
         "q",
         ""
     ).strip()
@@ -499,28 +671,20 @@ def search():
     if not query:
         return redirect(url_for("viewall"))
 
-    if not re.match(
-        r"^[a-zA-Z0-9 ]+$",
-        query
-    ):
-
-        flash(
-            "Search can only use letters, numbers, and spaces.",
-            "warning"
-        )
-
-        return redirect(url_for("viewall"))
-
     notes = run_query(
         """
         SELECT *
         FROM notes
         WHERE user_id = ?
-        AND title LIKE ?
+        AND (
+            title LIKE ?
+            OR content LIKE ?
+        )
         ORDER BY created_at DESC
         """,
         (
             current_user_id(),
+            f"%{query}%",
             f"%{query}%"
         ),
         fetch_all=True
@@ -534,4 +698,6 @@ def search():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host="0.0.0.0", port=port, debug=debug)
